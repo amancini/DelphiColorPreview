@@ -1,6 +1,6 @@
 # DelphiColorPreview
 
-A lightweight RAD Studio (Delphi 12 Athens) IDE plugin that shows a **color swatch
+A lightweight RAD Studio (Delphi 12 Athens or newer) IDE plugin that shows a **color swatch
 in the editor gutter** next to every color literal in your source — like the color
 decorators in VS Code — and lets you **Shift+click** a swatch to pick a new color,
 rewriting the literal directly in your code.
@@ -23,8 +23,18 @@ rewriting the literal directly in your code.
 
 ## Requirements
 
-- RAD Studio 12 Athens (Delphi, compiler 36.0 / package version `290`).
+- **RAD Studio 12 Athens or newer (Delphi 12+).** It relies on the modern
+  `ToolsAPI.Editor` code-editor notifier framework (`TNTACodeEditorNotifier`,
+  `INTACodeEditorState`, gutter paint stages), which was introduced in 12 — the
+  older `INTAEditViewModifier` painting API was deprecated as of 11.3. It is
+  therefore **not compatible with Delphi 11 or earlier.**
 - Win32 design-time package (the IDE host is a 32-bit process).
+
+> **Delphi 13+:** the source is forward-compatible (it uses only the stable base
+> interfaces, which RAD Studio extends additively). Just recompile — a design
+> package BPL is locked to its IDE version, so the D12 BPL won't load in D13.
+> Open `DelphiColorPreview.dproj` in the newer IDE (it upgrades the project
+> automatically) and rebuild.
 
 ## Installation
 
