@@ -1,0 +1,19 @@
+// Open this in the RAD Studio code editor to test DelphiColorPreview.
+// A color swatch should appear next to each literal below.
+
+  FBackground := clBtnFace;
+  FHighlight  := clYellow;
+  FBorder     := clGray;
+  FError      := clRed;
+
+  PenColor    := $00FF8040;     // TColor hex (BGR): light blue-ish
+  BrushColor  := $0000FF00;     // pure green
+  ShadowColor := $00202020;
+
+  MarkerHigh  := RGB(255, 0, 0);
+  MarkerMid   := RGB(255, 165, 0);
+  MarkerLow   := RGB(0, 128, 255);
+
+  // Not colors (should NOT get a swatch):
+  Flags       := $80;           // too short
+  Count       := RGB(a, b, c);  // non-literal args

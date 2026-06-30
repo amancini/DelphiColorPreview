@@ -1,0 +1,20 @@
+# Delphi / RAD Studio build artifacts
+*.bpl
+*.dcp
+*.dcu
+*.exe
+*.dll
+*.~*
+*.res
+*.identcache
+*.local
+*.delphilsp.json
+
+# Output folders
+dcu/
+bpl/
+dcp/
+__history/
+__recovery/
+Win32/
+Win64/
