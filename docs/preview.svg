@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="470" viewBox="0 0 1200 470"
+     font-family="Consolas, 'DejaVu Sans Mono', 'Courier New', monospace">
+  <defs>
+    <clipPath id="win"><rect x="40" y="30" width="1112" height="398" rx="14"/></clipPath>
+  </defs>
+
+  <!-- page -->
+  <rect width="1200" height="470" fill="#0d1117"/>
+  <!-- soft shadow -->
+  <rect x="44" y="38" width="1112" height="398" rx="14" fill="#000000" opacity="0.35"/>
+
+  <g clip-path="url(#win)">
+    <!-- editor body -->
+    <rect x="40" y="30" width="1112" height="398" fill="#1e1e1e"/>
+    <!-- title bar -->
+    <rect x="40" y="30" width="1112" height="38" fill="#2d2d2d"/>
+    <circle cx="66" cy="49" r="6" fill="#ff5f56"/>
+    <circle cx="88" cy="49" r="6" fill="#ffbd2e"/>
+    <circle cx="110" cy="49" r="6" fill="#27c93f"/>
+    <text x="150" y="55" fill="#cfcfcf" font-size="16">UnitColorPalette.pas</text>
+    <!-- gutter -->
+    <rect x="40" y="68" width="92" height="360" fill="#252526"/>
+    <line x1="132" y1="68" x2="132" y2="428" stroke="#333"/>
+
+    <!-- line numbers -->
+    <g fill="#6e7681" font-size="18" text-anchor="end">
+      <text x="120" y="116">12</text>
+      <text x="120" y="162">13</text>
+      <text x="120" y="208">14</text>
+      <text x="120" y="254">15</text>
+      <text x="120" y="300">16</text>
+      <text x="120" y="346">17</text>
+      <text x="120" y="392">18</text>
+    </g>
+
+    <!-- gutter color swatches -->
+    <g stroke="#555">
+      <rect x="52" y="143" width="22" height="24" rx="3" fill="#3c3c3c"/>
+      <rect x="52" y="189" width="22" height="24" rx="3" fill="#ff0000"/>
+      <rect x="52" y="235" width="22" height="24" rx="3" fill="#00c800"/>
+      <rect x="52" y="281" width="22" height="24" rx="3" fill="#0080ff"/>
+      <rect x="52" y="327" width="22" height="24" rx="3" fill="#ffff00"/>
+      <rect x="52" y="373" width="22" height="24" rx="3" fill="#ff8000"/>
+    </g>
+
+    <!-- code -->
+    <g font-size="21" xml:space="preserve">
+      <text x="150" y="116"><tspan fill="#569cd6">const</tspan></text>
+      <text x="150" y="162"><tspan fill="#9cdcfe">  Background  </tspan><tspan fill="#d4d4d4">= </tspan><tspan fill="#b5cea8">$003C3C3C;</tspan><tspan fill="#6a9955">   // panel bg</tspan></text>
+      <text x="150" y="208"><tspan fill="#9cdcfe">  Danger      </tspan><tspan fill="#d4d4d4">= </tspan><tspan fill="#b5cea8">$000000FF;</tspan><tspan fill="#6a9955">   // red</tspan></text>
+      <text x="150" y="254"><tspan fill="#9cdcfe">  Success     </tspan><tspan fill="#d4d4d4">= </tspan><tspan fill="#b5cea8">$0000C800;</tspan><tspan fill="#6a9955">   // green</tspan></text>
+      <text x="150" y="300"><tspan fill="#9cdcfe">  Link        </tspan><tspan fill="#d4d4d4">= </tspan><tspan fill="#b5cea8">$00FF8000;</tspan><tspan fill="#6a9955">   // light blue</tspan></text>
+      <text x="150" y="346"><tspan fill="#9cdcfe">  Warning     </tspan><tspan fill="#d4d4d4">= </tspan><tspan fill="#4fc1ff">clYellow;</tspan></text>
+      <text x="150" y="392"><tspan fill="#9cdcfe">  Accent      </tspan><tspan fill="#d4d4d4">= </tspan><tspan fill="#dcdcaa">RGB</tspan><tspan fill="#d4d4d4">(</tspan><tspan fill="#b5cea8">255, 128, 0</tspan><tspan fill="#d4d4d4">);</tspan></text>
+    </g>
+  </g>
+
+  <!-- window border -->
+  <rect x="40" y="30" width="1112" height="398" rx="14" fill="none" stroke="#3a3a3a"/>
+
+  <!-- caption -->
+  <text x="600" y="456" fill="#8b949e" font-size="16" text-anchor="middle"
+        font-family="Segoe UI, Helvetica, Arial, sans-serif">Color swatches in the gutter — Shift+click a swatch to pick a color</text>
+</svg>

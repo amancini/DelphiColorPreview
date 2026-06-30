@@ -3,13 +3,13 @@
 A lightweight RAD Studio (Delphi 12 Athens) IDE plugin that shows a **color swatch
 in the editor gutter** next to every color literal in your source — like the color
 decorators in VS Code — and lets you **Shift+click** a swatch to pick a new color,
-rewriting the literal in place.
+rewriting the literal directly in your code.
 
-![DelphiColorPreview in action](docs/preview.png)
+![DelphiColorPreview in action](docs/preview.svg)
 
 ## Features
 
-- Inline color swatches in the left gutter, on every line that contains a color literal.
+- Color swatches in the left gutter, on every line that contains a color literal.
 - Recognizes three Delphi color forms:
 
   | Form          | Example                | Notes                                                        |
@@ -18,11 +18,8 @@ rewriting the literal in place.
   | `$00BBGGRR`   | `$00FF8040`            | `TColor` hex (BGR byte order); 6–8 hex digits                 |
   | `RGB(r,g,b)`  | `RGB(255, 128, 0)`     | integer-literal arguments only                               |
 
-- **Shift+click** a swatch to open a color picker and rewrite the literal in the same
-  form (`$hex` → `$hex`, `RGB()` → `RGB()`, `clXXX` → name when one exists). The change
-  goes through the editor buffer, so **Ctrl+Z** undoes it.
-- Plain clicks are left untouched, so the gutter keeps working for breakpoints.
-- No configuration, no toolbar, no menu — install the package and it just works.
+- Edit colors straight from the gutter (see Usage).
+- No configuration, no toolbar, no menu — build, install, done.
 
 ## Requirements
 
@@ -31,28 +28,28 @@ rewriting the literal in place.
 
 ## Installation
 
-1. Build the package (see below) or grab `DelphiColorPreview.bpl`.
-2. In the IDE: **Component → Install Packages… → Add…** and select
-   `DelphiColorPreview.bpl`.
-3. Open any unit with color literals — swatches appear in the gutter.
+1. Open `DelphiColorPreview.dproj` in RAD Studio 12.
+2. **Build** the project.
+3. Right-click the project in the Project Manager → **Install**.
 
-To uninstall, remove the entry from the same dialog; the editor returns to normal.
+That's it — the swatches show up in the editor gutter immediately. To uninstall,
+right-click the project → **Uninstall** (or remove it from
+*Component → Install Packages…*).
 
-## Build from source
+> Prefer the command line? Run `build.bat` (it calls `rsvars.bat` + `msbuild`, Win32 /
+> Debug) and then do step 3 in the IDE.
 
-Requires RAD Studio 12 on the `PATH` via `rsvars.bat`.
+## Usage
 
-```bat
-build.bat
-```
-
-`build.bat` calls `rsvars.bat` and runs `msbuild` for the Win32 / Debug configuration,
-writing `DelphiColorPreview.bpl` to the IDE's package output folder
-(`%BDSCOMMONDIR%\Bpl`, which is on the IDE load path). Then install it as above.
-
-> The package has **no `DllSuffix`** in the project on purpose — the output stays
-> `DelphiColorPreview.bpl`. (Setting one makes the IDE reconcile the mismatch by
-> renaming the whole project, producing a double-suffixed bpl that won't load.)
+- A color swatch appears in the gutter next to every line that has a color literal —
+  with or without a breakpoint on that line.
+- **Shift+click** a swatch to open a color picker. Choosing a color **rewrites the
+  literal in your code**, keeping the original form:
+  - `$00BBGGRR` stays a hex literal,
+  - `RGB(r, g, b)` stays an `RGB()` call,
+  - `clXXX` becomes the matching named constant when one exists (otherwise a hex literal).
+- The edit goes through the editor buffer, so **Ctrl+Z** undoes it like any other change.
+- A plain (non-Shift) click is left untouched, so the gutter still works for breakpoints.
 
 ## How it works
 
