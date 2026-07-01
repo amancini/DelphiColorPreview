@@ -2,14 +2,17 @@ unit ColorPreview.Notifier;
 
 { Code-editor events notifier that paints a color swatch in the LEFT gutter
   (the breakpoint column) for every color literal found on a visible line, and
-  opens a color picker on Shift+click, rewriting the literal in place (with IDE
-  undo support).
+  opens the custom color picker on Shift+click, rewriting the literal in place
+  (with IDE undo support).
 
   Painting is done once per repaint at the pgsEndPaint gutter stage: that stage
   runs after the whole gutter is drawn, with a clip covering the entire gutter,
   so the swatch can sit at the far left on every line (with or without an actual
   breakpoint). Geometry comes from each line's own GutterRect, so there is no
-  column-to-pixel math and the swatch never drifts. }
+  column-to-pixel math and the swatch never drifts.
+
+  The set of recognized literals and the byte order of bare hex follow the
+  global switch in ColorPreview.Settings. }
 
 interface
 
@@ -26,7 +29,7 @@ uses
 
 type
   /// <summary>
-  ///   Draws color swatches in the IDE code-editor gutter and opens a color
+  ///   Draws color swatches in the IDE code-editor gutter and opens the color
   ///   picker when a swatch is Shift+clicked.
   /// </summary>
   TColorPreviewNotifier = class(TNTACodeEditorNotifier)
@@ -38,11 +41,13 @@ type
         Line  : Integer;      // 1-based logical line
       end;
     var
-      FSwatches : TList<TSwatch>;
-    procedure DrawSwatch(aCanvas: TCanvas; const aArea: TRect; aColor: TColor);
+      FSwatches       : TList<TSwatch>;
+      FCurrentRgbOrder : Boolean;   // effective 6-digit hex order for this repaint
+      FDetectedFile   : string;    // file name behind the cached FFileIsFmx
+      FFileIsFmx      : Boolean;    // does the current unit use the FMX framework
+    function CurrentFileIsFmx: Boolean;
     procedure DrawLineSwatches(aCanvas: TCanvas; const aLineState: INTACodeEditorLineState);
     procedure ApplyColor(const aSwatch: TSwatch);
-    function FormatLiteral(aColor: TColor; aKind: TColorKind): string;
     { Handlers wired to the base TNTACodeEditorNotifier.On* events (the paint /
       mouse methods are not virtual, so they are consumed as events). }
     procedure HandlePaintGutter(const aRect: TRect; const aStage: TPaintGutterStage;
@@ -61,15 +66,17 @@ type
 implementation
 
 uses
-  Winapi.Windows,
   System.SysUtils,
-  Vcl.Dialogs;
+  ColorPreview.Render,
+  ColorPreview.Settings,
+  ColorPreview.PickerForm;
 
 const
-  SWATCH_LEFT       = 2;   // px offset from the left edge of the gutter
-  SWATCH_MARGIN     = 2;   // px vertical inset within the gutter line
-  SWATCH_WIDTH      = 20;  // swatch width (wider than tall for visibility)
-  MAX_SWATCH_HEIGHT = 14;  // cap the height so it stays a neat marker
+  SWATCH_LEFT       = 2;    // px offset from the left edge of the gutter
+  SWATCH_MARGIN     = 2;    // px vertical inset within the gutter line
+  SWATCH_WIDTH      = 20;   // swatch width (wider than tall for visibility)
+  MAX_SWATCH_HEIGHT = 14;   // cap the height so it stays a neat marker
+  DETECT_SCAN_BYTES = 16384; // bytes scanned from the top to detect an FMX unit
 
 { Builds the swatch rect whose left edge is aLeftEdge, vertically centered
   inside the given gutter line rect. }
@@ -120,6 +127,7 @@ begin
   LState := aContext.EditorState;
   if not Assigned(LState) then
     Exit;
+  FCurrentRgbOrder := EffectiveRgbOrder(GetByteOrderMode, CurrentFileIsFmx);
   FSwatches.Clear;
   for LVisLine := LState.TopLine to LState.BottomLine do
   begin
@@ -140,7 +148,7 @@ var
   LLeft   : Integer;
   LIndex  : Integer;
 begin
-  LTokens := FindColorTokens(aLineState.Text);
+  LTokens := FindColorTokens(aLineState.Text, FCurrentRgbOrder);
   if Length(LTokens) = 0 then
     Exit;
   LGutter := aLineState.GutterRect;   // leftmost area, where breakpoints appear
@@ -157,28 +165,7 @@ begin
     LSwatch.Token := LTokens[LIndex];
     LSwatch.Line := aLineState.LogicalLineNum;
     FSwatches.Add(LSwatch);
-    DrawSwatch(aCanvas, LSwatch.Area, ColorToRGB(LTokens[LIndex].Color));
-  end;
-end;
-
-procedure TColorPreviewNotifier.DrawSwatch(aCanvas: TCanvas; const aArea: TRect;
-  aColor: TColor);
-var
-  LPenColor, LBrushColor : TColor;
-  LPenWidth              : Integer;
-begin
-  LPenColor := aCanvas.Pen.Color;
-  LBrushColor := aCanvas.Brush.Color;
-  LPenWidth := aCanvas.Pen.Width;
-  try
-    aCanvas.Brush.Color := aColor;
-    aCanvas.Pen.Color := clGray;
-    aCanvas.Pen.Width := 1;
-    aCanvas.Rectangle(aArea);
-  finally
-    aCanvas.Pen.Color := LPenColor;
-    aCanvas.Brush.Color := LBrushColor;
-    aCanvas.Pen.Width := LPenWidth;
+    DrawColorPreview(aCanvas, LSwatch.Area, LTokens[LIndex].Color, LTokens[LIndex].Alpha);
   end;
 end;
 
@@ -200,43 +187,58 @@ end;
 
 procedure TColorPreviewNotifier.ApplyColor(const aSwatch: TSwatch);
 var
-  LDialog : TColorDialog;
-  LView   : IOTAEditView;
-  LPos    : IOTAEditPosition;
+  LView     : IOTAEditView;
+  LPos      : IOTAEditPosition;
+  LToken    : TColorToken;
+  LColor    : TColor;
+  LAlpha    : Byte;
+  LWriteRgb : Boolean;
 begin
   LView := (BorlandIDEServices as IOTAEditorServices).TopView;
   if not Assigned(LView) then
     Exit;
-  LDialog := TColorDialog.Create(nil);
-  try
-    LDialog.Color := ColorToRGB(aSwatch.Token.Color);
-    if not LDialog.Execute then
-      Exit;
-    LPos := LView.Buffer.EditPosition;
-    LPos.Move(aSwatch.Line, aSwatch.Token.StartCol);
-    LPos.Delete(aSwatch.Token.Length);
-    LPos.InsertText(FormatLiteral(LDialog.Color, aSwatch.Token.Kind));
-  finally
-    LDialog.Free;
-  end;
+  LToken := aSwatch.Token;
+  LColor := ColorToRGB(LToken.Color);
+  LAlpha := LToken.Alpha;
+  if not EditColor(LToken, CurrentFileIsFmx, LColor, LAlpha, LWriteRgb) then
+    Exit;
+  LToken.Color := LColor;
+  LToken.Alpha := LAlpha;
+  LPos := LView.Buffer.EditPosition;
+  LPos.Move(aSwatch.Line, aSwatch.Token.StartCol);
+  LPos.Delete(aSwatch.Token.Length);
+  LPos.InsertText(FormatColorLiteral(LToken, LWriteRgb));
   (BorlandIDEServices as INTACodeEditorServices).InvalidateTopEditor;
 end;
 
-function TColorPreviewNotifier.FormatLiteral(aColor: TColor;
-  aKind: TColorKind): string;
+{ Detects whether the active unit uses the FMX framework by scanning the top of
+  its buffer for an 'FMX.' unit reference. Cached per file name so repaints are
+  cheap; refreshed when the active file changes. }
+function TColorPreviewNotifier.CurrentFileIsFmx: Boolean;
 var
-  LRgb: TColor;
+  LBuffer : IOTAEditBuffer;
+  LReader : IOTAEditReader;
+  LText   : AnsiString;
+  LName   : string;
+  LRead   : Integer;
 begin
-  LRgb := ColorToRGB(aColor);
-  case aKind of
-    ckRgbCall:
-      Result := Format('RGB(%d, %d, %d)',
-        [GetRValue(LRgb), GetGValue(LRgb), GetBValue(LRgb)]);
-    ckName:
-      Result := ColorToString(aColor);   // clXXX name when known, else $hex
-  else
-    Result := '$' + IntToHex(LRgb, 8);   // ckHex -> $00BBGGRR
+  LBuffer := (BorlandIDEServices as IOTAEditorServices).TopBuffer;
+  if not Assigned(LBuffer) then
+    Exit(False);
+  LName := LBuffer.FileName;
+  if SameText(LName, FDetectedFile) then
+    Exit(FFileIsFmx);
+  FDetectedFile := LName;
+  FFileIsFmx := False;
+  LReader := LBuffer.CreateReader;
+  if Assigned(LReader) then
+  begin
+    SetLength(LText, DETECT_SCAN_BYTES);
+    LRead := LReader.GetText(0, PAnsiChar(LText), DETECT_SCAN_BYTES);
+    SetLength(LText, LRead);
+    FFileIsFmx := Pos(AnsiString('FMX.'), LText) > 0;
   end;
+  Result := FFileIsFmx;
 end;
 
 end.

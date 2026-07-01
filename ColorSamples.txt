@@ -14,6 +14,20 @@
   MarkerMid   := RGB(255, 165, 0);
   MarkerLow   := RGB(0, 128, 255);
 
+  // FMX TAlphaColor named constants (always recognized, any mode):
+  FmxAccent   := claRed;
+  FmxPanel    := TAlphaColorRec.Blue;
+  FmxText     := TAlphaColors.Green;
+
+  // FMX TAlphaColor 8-digit hex: auto-detected by the high byte, no switch needed
+  // (a non-zero high byte means ARGB):
+  FmxOpaque   := $FF3366CC;     // opaque steel blue
+  FmxHalf     := $80FF0000;     // 50% red - swatch shows a checkerboard
+
+  // 6-digit hex is ambiguous: BGR by default in a VCL unit; in an FMX unit (or with
+  // the picker's Byte order set to RGB) it is read as web RGB:
+  WebColor    := $C0FFEE;       // 6-digit web RGB
+
   // Not colors (should NOT get a swatch):
   Flags       := $80;           // too short
   Count       := RGB(a, b, c);  // non-literal args

@@ -32,6 +32,9 @@ requires
 
 contains
   ColorPreview.Parser in 'ColorPreview.Parser.pas',
+  ColorPreview.Render in 'ColorPreview.Render.pas',
+  ColorPreview.Settings in 'ColorPreview.Settings.pas',
+  ColorPreview.PickerForm in 'ColorPreview.PickerForm.pas',
   ColorPreview.Notifier in 'ColorPreview.Notifier.pas',
   ColorPreview.Register in 'ColorPreview.Register.pas';
 

@@ -72,6 +72,9 @@
         <DCCReference Include="vcl.dcp"/>
         <DCCReference Include="designide.dcp"/>
         <DCCReference Include="ColorPreview.Parser.pas"/>
+        <DCCReference Include="ColorPreview.Render.pas"/>
+        <DCCReference Include="ColorPreview.Settings.pas"/>
+        <DCCReference Include="ColorPreview.PickerForm.pas"/>
         <DCCReference Include="ColorPreview.Notifier.pas"/>
         <DCCReference Include="ColorPreview.Register.pas"/>
         <BuildConfiguration Include="Base">
