@@ -46,12 +46,13 @@
   Cell.Color  := 16708849;      // $FEF4F1
   TextColor   := 15988209;      // $F3F5F1
 
-  // Decimal ARGB assigned to a *Color target in an FMX unit (needs FMX. in the file):
+  // Decimal ARGB assigned to a *Color target (alpha auto-detected from the high
+  // byte - no FMX unit or byte-order switch needed):
   Fill.Color  := 4278190080;    // $FF000000 opaque black
 
   // Counter-examples (should NOT get a swatch):
   ColorIndex  := 5;             // does not end in "Color"
   Width       := 16708849;      // not a color target
   Pen.Color   := SomeFunc(16708849);  // decimal is inside a call, not a direct operand
-  Casted      := TColor(16708849);     // cast excluded
+  Base.Color  := TColor(16708849);     // cast excluded (target IS *Color, but RHS is a cast, not a bare number)
   const Fixed : TColor = 16708849;     // const declaration excluded

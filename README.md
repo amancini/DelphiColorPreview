@@ -27,8 +27,9 @@ rewriting the literal directly in your code. It understands both **VCL** (`TColo
 - **Web-hex strings** — `'#RGB'` and `'#RRGGBB'` inside string literals, read in web RGB order (e.g. `'#FF8800'`).
 - **`TColorRec.X`** — VCL named-color record members (`TColorRec.Crimson`, `TColorRec.Blue`, …).
 - **Decimal `TColor`** — a raw decimal integer assigned directly to a `*Color` target (`Font.Color := 16708849;`, `TextColor := 15988209;`). Recognized only as the direct operand of the assignment: values in casts, function arguments, or `const` declarations are intentionally ignored to avoid false positives on non-color integers.
-- **Byte order is mostly automatic.** Only bare hex is ambiguous (`$RRGGBB` is BGR in VCL,
-  RGB in FMX/web), and the plugin resolves it for you:
+- **Byte order is mostly automatic.** Only bare hex, and a bare decimal assigned directly to
+  a `*Color` target, are ambiguous (`$RRGGBB` is BGR in VCL, RGB in FMX/web, and a low-range
+  decimal follows the same mode), and the plugin resolves it for you:
   - **8-digit hex** is decided by its high byte — `$00BBGGRR` is a VCL `TColor`, while a
     non-zero high byte (`$FF3366CC`, `$80FF0000`) is an FMX `TAlphaColor` (ARGB, with alpha).
     No setting needed.
@@ -83,7 +84,7 @@ right-click the project → **Uninstall** (or remove it from
   - a **Choose color…** button that opens the native color dialog for the RGB hue,
   - an **Alpha** slider (enabled for `TAlphaColor` literals),
   - a **Byte order (hex)** selector — **Auto / BGR / RGB**, remembered across IDE restarts
-    (only affects 6-digit hex; see Features).
+    (affects 6-digit hex and low-range decimal `TColor` values; see Features).
 - The picker matches the current IDE theme (light/dark).
 - Confirming **rewrites the literal in your code**, keeping its original form:
   - hex stays hex — `$00BBGGRR` (VCL), `$AARRGGBB` (FMX alpha), or `$RRGGBB` per the mode,
