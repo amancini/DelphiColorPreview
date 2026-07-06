@@ -550,13 +550,15 @@ var
   LName  : string;
 begin
   LValue := MakeAlphaValue(aRgb, aToken.Alpha);
+  // AlphaColorToString strips the 'cla' prefix from a matched name (see
+  // System.UIConsts) and returns '#AARRGGBB' when the value is unnamed.
   LName := AlphaColorToString(TAlphaColor(LValue));
-  if not LName.StartsWith('cla', True) then
-    Exit('$' + IntToHex(LValue, ALPHA_HEX_DIGITS));
+  if LName.StartsWith('#', True) then
+    Exit('$' + IntToHex(LValue, ALPHA_HEX_DIGITS));   // custom color -> $AARRGGBB
   if aToken.Prefix.IsEmpty or SameText(aToken.Prefix, 'cla') then
-    Result := LName
+    Result := 'cla' + LName                           // claRed
   else
-    Result := aToken.Prefix + LName.Substring(3);
+    Result := aToken.Prefix + LName;                  // TAlphaColorRec.Red
 end;
 
 function FormatHex(aRgb: TColor; aAlpha: Byte; aHexDigits: Integer; aRgbOrder: Boolean): string;

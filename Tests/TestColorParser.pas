@@ -18,6 +18,8 @@ type
     [Test] procedure Hex8_AutoVcl;
     [Test] procedure AlphaName_Cla;
     [Test] procedure AlphaRec_Member;
+    [Test] procedure AlphaName_RoundTrip_Cla;
+    [Test] procedure AlphaRec_RoundTrip;
     [Test] procedure TooShortHex_NoToken;
     [Test] procedure PlainNumber_NoToken;
     [Test] procedure StringLiteral_NonWeb_NoToken;
@@ -114,6 +116,24 @@ begin
   Assert.AreEqual(1, Length(L));
   Assert.AreEqual(Ord(ckAlphaName), Ord(L[0].Kind));
   Assert.AreEqual('TAlphaColorRec.', L[0].Prefix);
+end;
+
+procedure TColorParserTests.AlphaName_RoundTrip_Cla;
+var
+  L: TColorTokens;
+begin
+  L := FindColorTokens('  A := claRed;', False);
+  Assert.AreEqual(1, Length(L));
+  Assert.AreEqual('claRed', FormatColorLiteral(L[0], False));
+end;
+
+procedure TColorParserTests.AlphaRec_RoundTrip;
+var
+  L: TColorTokens;
+begin
+  L := FindColorTokens('  A := TAlphaColorRec.Blue;', False);
+  Assert.AreEqual(1, Length(L));
+  Assert.AreEqual('TAlphaColorRec.Blue', FormatColorLiteral(L[0], False));
 end;
 
 procedure TColorParserTests.TooShortHex_NoToken;
