@@ -21,6 +21,9 @@ type
     [Test] procedure TooShortHex_NoToken;
     [Test] procedure PlainNumber_NoToken;
     [Test] procedure StringLiteral_NonWeb_NoToken;
+    [Test] procedure WebHex_Six;
+    [Test] procedure WebHex_ShortExpands;
+    [Test] procedure WebHex_NonHex_NoToken;
   end;
 
 implementation
@@ -131,6 +134,34 @@ begin
   // Color-family substrings inside string literals are NOT colors (avoids
   // false positives); only web-hex '#RRGGBB' is recognized (a later task).
   L := FindColorTokens('  Caption := ''clRed'';', False);
+  Assert.AreEqual(0, Length(L));
+end;
+
+procedure TColorParserTests.WebHex_Six;
+var
+  L: TColorTokens;
+begin
+  L := FindColorTokens('  S := ''#FF8800'';', False);
+  Assert.AreEqual(1, Length(L));
+  Assert.AreEqual(Ord(ckWebHex), Ord(L[0].Kind));
+  Assert.AreEqual(Integer(RGB($FF, $88, $00)), Integer(L[0].Color));
+  Assert.AreEqual(9, L[0].Length); // '#FF8800' including both quotes = 9 chars
+end;
+
+procedure TColorParserTests.WebHex_ShortExpands;
+var
+  L: TColorTokens;
+begin
+  L := FindColorTokens('  S := ''#F80'';', False);
+  Assert.AreEqual(1, Length(L));
+  Assert.AreEqual(Integer(RGB($FF, $88, $00)), Integer(L[0].Color));
+end;
+
+procedure TColorParserTests.WebHex_NonHex_NoToken;
+var
+  L: TColorTokens;
+begin
+  L := FindColorTokens('  S := ''#pragma'';', False);
   Assert.AreEqual(0, Length(L));
 end;
 

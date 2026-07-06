@@ -21,7 +21,7 @@ uses
 
 type
   /// <summary>Kind of color literal found in source code.</summary>
-  TColorKind = (ckVclName, ckVclHex, ckRgbCall, ckAlphaName, ckRgbHex);
+  TColorKind = (ckVclName, ckVclHex, ckRgbCall, ckAlphaName, ckRgbHex, ckWebHex);
 
   /// <summary>A color literal located inside a single source line.</summary>
   TColorToken = record
@@ -422,6 +422,55 @@ begin
   Result := TryNamedColor(aLex, aStart, aToken, aConsumed);
 end;
 
+function IsWebHexDigits(const aDigits: string): Boolean;
+var
+  LCh: Char;
+begin
+  Result := (aDigits.Length = 3) or (aDigits.Length = 6);
+  if not Result then
+    Exit;
+  for LCh in aDigits do
+    if not IsHexDigit(LCh) then
+      Exit(False);
+end;
+
+function ExpandShortHex(const aShort: string): string;
+begin
+  Result := aShort[1] + aShort[1] + aShort[2] + aShort[2] + aShort[3] + aShort[3];
+end;
+
+{ Recognizes a '#RGB' / '#RRGGBB' web color inside a string literal (fixed RGB). }
+function BuildWebHexToken(const aLex: TLexeme; out aToken: TColorToken): Boolean;
+var
+  LInner : string;
+  LHex   : string;
+  LValue : Integer;
+begin
+  Result := False;
+  LInner := aLex.Text;
+  if (LInner.Length < 3) or (LInner.Chars[0] <> '''') then
+    Exit;
+  LInner := LInner.Substring(1, LInner.Length - 2);   // strip the quotes
+  if (LInner.Length < 4) or (LInner.Chars[0] <> '#') then
+    Exit;
+  LHex := LInner.Substring(1);
+  if not IsWebHexDigits(LHex) then
+    Exit;
+  if LHex.Length = 3 then
+    LHex := ExpandShortHex(LHex);
+  LValue := StrToIntDef('$' + LHex, -1);
+  if LValue < 0 then
+    Exit;
+  aToken.StartCol  := aLex.StartCol;
+  aToken.Length    := aLex.Text.Length;
+  aToken.Color     := RGB(Byte(LValue shr 16), Byte(LValue shr 8), Byte(LValue));
+  aToken.Alpha     := OPAQUE;
+  aToken.HexDigits := RGB_HEX_DIGITS;
+  aToken.Prefix    := String.Empty;
+  aToken.Kind      := ckWebHex;
+  Result := True;
+end;
+
 { ---- top-level recognizer ---- }
 
 function RecognizeAt(const aLex: TLexemes; aIdx: Integer; aRgbOrder: Boolean;
@@ -432,6 +481,7 @@ begin
   case aLex[aIdx].Kind of
     lkIdent : Result := TryIdent(aLex, aIdx, aToken, aConsumed);
     lkHex   : Result := BuildHexToken(aLex[aIdx], aRgbOrder, aToken);
+    lkString: Result := BuildWebHexToken(aLex[aIdx], aToken);
   end;
 end;
 
@@ -496,6 +546,12 @@ begin
               IntToHex(GetBValue(aRgb), 2);
 end;
 
+function FormatWebHex(aRgb: TColor): string;
+begin
+  Result := '''#' + IntToHex(GetRValue(aRgb), 2) + IntToHex(GetGValue(aRgb), 2) +
+            IntToHex(GetBValue(aRgb), 2) + '''';
+end;
+
 function FormatColorLiteral(const aToken: TColorToken; aRgbOrder: Boolean): string;
 var
   LRgb: TColor;
@@ -508,6 +564,8 @@ begin
       Result := ColorToString(aToken.Color);
     ckAlphaName:
       Result := FormatAlphaName(aToken, LRgb);
+    ckWebHex:
+      Result := FormatWebHex(LRgb);
   else
     Result := FormatHex(LRgb, aToken.Alpha, aToken.HexDigits, aRgbOrder);
   end;
@@ -515,6 +573,8 @@ end;
 
 function HexUsesRgbOrder(const aToken: TColorToken; aEffective6: Boolean): Boolean;
 begin
+  if aToken.Kind = ckWebHex then
+    Exit(True);
   if aToken.HexDigits = ALPHA_HEX_DIGITS then
     Result := aToken.Kind = ckRgbHex
   else
