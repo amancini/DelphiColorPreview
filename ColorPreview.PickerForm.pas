@@ -40,8 +40,9 @@ uses
   ColorPreview.Settings;
 
 const
-  OPAQUE     = 255;
-  FORM_WIDTH = 288;
+  OPAQUE      = 255;
+  FORM_WIDTH  = 288;
+  ALPHA_WIDTH = 8;    // decimal/hex width that carries an alpha byte
 
 type
   TColorPickerForm = class(TForm)
@@ -188,7 +189,8 @@ end;
 function TColorPickerForm.AlphaAllowed: Boolean;
 begin
   Result := (FToken.Kind = ckAlphaName) or
-            ((FToken.Kind in [ckVclHex, ckRgbHex]) and CurrentWriteRgb);
+            ((FToken.Kind in [ckVclHex, ckRgbHex]) and CurrentWriteRgb) or
+            ((FToken.Kind = ckDecimal) and (FToken.HexDigits = ALPHA_WIDTH));
 end;
 
 function TColorPickerForm.WorkingAlpha: Byte;
