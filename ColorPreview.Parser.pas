@@ -30,7 +30,7 @@ type
     Color     : TColor;     // display color (BGR, opaque) - always valid
     Alpha     : Byte;       // 255 for non-alpha families; real alpha otherwise
     HexDigits : Integer;    // digit count of a hex literal (0 when not hex)
-    Prefix    : string;     // family prefix as typed: 'cla' | 'TAlphaColorRec.' | 'TAlphaColors.'
+    Prefix    : string;     // family prefix as typed: 'cla' | 'TAlphaColorRec.' | 'TAlphaColors.' | 'TColorRec.'
     Kind      : TColorKind;
   end;
 
@@ -513,7 +513,8 @@ begin
   Result := IsSym(aLex, aIdx, ':=') and
             (aIdx > 0) and (aLex[aIdx - 1].Kind = lkIdent) and
             EndsWithColor(aLex[aIdx - 1].Text) and
-            (aIdx + 1 <= High(aLex)) and (aLex[aIdx + 1].Kind = lkNumber);
+            (aIdx + 1 <= High(aLex)) and (aLex[aIdx + 1].Kind = lkNumber) and
+            ((aIdx + 2 > High(aLex)) or IsSym(aLex, aIdx + 2, ';'));
 end;
 
 { Interprets a bare decimal like the equivalent hex literal: <= $FFFFFF is a

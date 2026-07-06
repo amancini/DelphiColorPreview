@@ -39,6 +39,9 @@ type
     [Test] procedure Decimal_NotColorTarget_NoToken;
     [Test] procedure Decimal_InCall_NoToken;
     [Test] procedure Decimal_ColorIndex_NoToken;
+    [Test] procedure Decimal_CompoundRhs_NoToken;
+    [Test] procedure Decimal_LoopCounter_NoToken;
+    [Test] procedure Decimal_CastToColorTarget_NoToken;
   end;
 
 implementation
@@ -303,6 +306,33 @@ var
   L: TColorTokens;
 begin
   L := FindColorTokens('  ColorIndex := 5;', False);
+  Assert.AreEqual(0, Length(L));
+end;
+
+procedure TColorParserTests.Decimal_CompoundRhs_NoToken;
+var
+  L: TColorTokens;
+begin
+  // The number must be the whole operand: '100 + Offset' is not a color literal.
+  L := FindColorTokens('  SpeedColor := 100 + Offset;', False);
+  Assert.AreEqual(0, Length(L));
+end;
+
+procedure TColorParserTests.Decimal_LoopCounter_NoToken;
+var
+  L: TColorTokens;
+begin
+  // A *Color-named loop counter must not light up its bound.
+  L := FindColorTokens('  for LColor := 0 to 255 do', False);
+  Assert.AreEqual(0, Length(L));
+end;
+
+procedure TColorParserTests.Decimal_CastToColorTarget_NoToken;
+var
+  L: TColorTokens;
+begin
+  // Cast RHS on a *Color target: not a bare-number operand -> no token.
+  L := FindColorTokens('  Base.Color := TColor(16708849);', False);
   Assert.AreEqual(0, Length(L));
 end;
 
