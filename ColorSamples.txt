@@ -31,3 +31,27 @@
   // Not colors (should NOT get a swatch):
   Flags       := $80;           // too short
   Count       := RGB(a, b, c);  // non-literal args
+
+  // --- New in this release ---
+
+  // Web-hex inside string literals (always read as RGB/web):
+  WebShort    := '#F80';        // expands to #FF8800
+  WebFull     := '#FF8800';     // orange
+
+  // VCL TColorRec named colors:
+  RecColor    := TColorRec.Crimson;
+  RecBlue     := TColorRec.Blue;
+
+  // Decimal TColor assigned to a *Color target (BGR):
+  Cell.Color  := 16708849;      // $FEF4F1
+  TextColor   := 15988209;      // $F3F5F1
+
+  // Decimal ARGB assigned to a *Color target in an FMX unit (needs FMX. in the file):
+  Fill.Color  := 4278190080;    // $FF000000 opaque black
+
+  // Counter-examples (should NOT get a swatch):
+  ColorIndex  := 5;             // does not end in "Color"
+  Width       := 16708849;      // not a color target
+  Pen.Color   := SomeFunc(16708849);  // decimal is inside a call, not a direct operand
+  Casted      := TColor(16708849);     // cast excluded
+  const Fixed : TColor = 16708849;     // const declaration excluded

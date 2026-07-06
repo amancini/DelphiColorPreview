@@ -24,6 +24,9 @@ rewriting the literal directly in your code. It understands both **VCL** (`TColo
   | `TAlphaColorRec.X`       | `TAlphaColorRec.Blue`       | FMX `TAlphaColor` record members                             |
   | `TAlphaColors.X`         | `TAlphaColors.Green`        | FMX `TAlphaColor` record members                             |
 
+- **Web-hex strings** — `'#RGB'` and `'#RRGGBB'` inside string literals, read in web RGB order (e.g. `'#FF8800'`).
+- **`TColorRec.X`** — VCL named-color record members (`TColorRec.Crimson`, `TColorRec.Blue`, …).
+- **Decimal `TColor`** — a raw decimal integer assigned directly to a `*Color` target (`Font.Color := 16708849;`, `TextColor := 15988209;`). Recognized only as the direct operand of the assignment: values in casts, function arguments, or `const` declarations are intentionally ignored to avoid false positives on non-color integers.
 - **Byte order is mostly automatic.** Only bare hex is ambiguous (`$RRGGBB` is BGR in VCL,
   RGB in FMX/web), and the plugin resolves it for you:
   - **8-digit hex** is decided by its high byte — `$00BBGGRR` is a VCL `TColor`, while a
