@@ -26,6 +26,9 @@ type
     [Test] procedure WebHex_NonHex_NoToken;
     [Test] procedure WebHex_Unterminated_NoToken;
     [Test] procedure WebHex_RoundTrip;
+    [Test] procedure ColorRec_Member;
+    [Test] procedure ColorRec_RoundTrip;
+    [Test] procedure Colors_Disabled;
   end;
 
 implementation
@@ -183,6 +186,34 @@ begin
   L := FindColorTokens('  S := ''#FF8800'';', False);
   Assert.AreEqual(1, Length(L));
   Assert.AreEqual('''#FF8800''', FormatColorLiteral(L[0], False));
+end;
+
+procedure TColorParserTests.ColorRec_Member;
+var
+  L: TColorTokens;
+begin
+  L := FindColorTokens('  C := TColorRec.Crimson;', False);
+  Assert.AreEqual(1, Length(L));
+  Assert.AreEqual(Ord(ckVclName), Ord(L[0].Kind));
+  Assert.AreEqual('TColorRec.', L[0].Prefix);
+end;
+
+procedure TColorParserTests.ColorRec_RoundTrip;
+var
+  L: TColorTokens;
+begin
+  L := FindColorTokens('  C := TColorRec.Crimson;', False);
+  Assert.AreEqual(1, Length(L));
+  Assert.AreEqual('TColorRec.Crimson', FormatColorLiteral(L[0], False));
+end;
+
+procedure TColorParserTests.Colors_Disabled;
+var
+  L: TColorTokens;
+begin
+  // TColors is a not-yet-mapped custom type -> no token until enabled
+  L := FindColorTokens('  C := TColors.Red;', False);
+  Assert.AreEqual(0, Length(L));
 end;
 
 initialization

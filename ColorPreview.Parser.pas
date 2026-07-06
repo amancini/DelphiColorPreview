@@ -322,19 +322,43 @@ begin
   aToken.Kind      := ckAlphaName;
 end;
 
-{ Resolves RecordName.Member for the FMX alpha-color records. Extended in a
-  later task to also handle TColorRec (VCL). }
+procedure FillVclRecToken(out aToken: TColorToken; aValue: TAlphaColor; const aPrefix: string);
+var
+  LRec: TAlphaColorRec;
+begin
+  LRec := TAlphaColorRec.Create(aValue);
+  aToken.Color     := RGB(LRec.R, LRec.G, LRec.B);   // opaque VCL color
+  aToken.Alpha     := OPAQUE;
+  aToken.HexDigits := 0;
+  aToken.Prefix    := aPrefix;                        // 'TColorRec.'
+  aToken.Kind      := ckVclName;
+end;
+
+{ Resolves RecordName.Member for the FMX alpha-color records and TColorRec
+  (VCL web palette). }
 function ResolveRecordMember(const aRecord, aMember: string; out aToken: TColorToken): Boolean;
 var
   LColorInt: Integer;
 begin
   Result := False;
   if SameText(aRecord, 'TAlphaColorRec') or SameText(aRecord, 'TAlphaColors') then
+  begin
     if IdentToAlphaColor('cla' + aMember, LColorInt) then
     begin
       FillAlphaToken(aToken, TAlphaColor(LColorInt), aRecord + '.');
       Result := True;
     end;
+  end
+  else if SameText(aRecord, 'TColorRec') then
+  begin
+    if IdentToAlphaColor('cla' + aMember, LColorInt) then
+    begin
+      FillVclRecToken(aToken, TAlphaColor(LColorInt), 'TColorRec.');
+      Result := True;
+    end;
+  end;
+  // 'TColors' -> disabled slot: add a name->value resolution here once the
+  // defining unit and its member mapping are known.
 end;
 
 function TryRecordMember(const aLex: TLexemes; aStart: Integer;
@@ -553,6 +577,21 @@ begin
             IntToHex(GetBValue(aRgb), 2) + '''';
 end;
 
+function FormatVclName(const aToken: TColorToken; aRgb: TColor): string;
+var
+  LName: string;
+begin
+  if aToken.Prefix.IsEmpty then
+    Exit(ColorToString(aToken.Color));
+  // AlphaColorToString already strips the 'cla' prefix from a matched name
+  // (see System.UIConsts) and returns '#AARRGGBB' when the value is unnamed.
+  LName := AlphaColorToString(TAlphaColor(MakeAlphaValue(aRgb, OPAQUE)));
+  if LName.StartsWith('#', True) then
+    Result := '$' + IntToHex(ColorToRGB(aToken.Color), ALPHA_HEX_DIGITS) // $00BBGGRR fallback
+  else
+    Result := aToken.Prefix + LName;                                    // TColorRec.Crimson
+end;
+
 function FormatColorLiteral(const aToken: TColorToken; aRgbOrder: Boolean): string;
 var
   LRgb: TColor;
@@ -562,7 +601,7 @@ begin
     ckRgbCall:
       Result := Format('RGB(%d, %d, %d)', [GetRValue(LRgb), GetGValue(LRgb), GetBValue(LRgb)]);
     ckVclName:
-      Result := ColorToString(aToken.Color);
+      Result := FormatVclName(aToken, LRgb);
     ckAlphaName:
       Result := FormatAlphaName(aToken, LRgb);
     ckWebHex:
