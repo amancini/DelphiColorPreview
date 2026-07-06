@@ -4,7 +4,8 @@ A lightweight RAD Studio (Delphi 12 Athens or newer) IDE plugin that shows a **c
 in the editor gutter** next to every color literal in your source — like the color
 decorators in VS Code — and lets you **Shift+click** a swatch to pick a new color,
 rewriting the literal directly in your code. It understands both **VCL** (`TColor`) and
-**FMX** (`TAlphaColor`, with an alpha channel) color forms.
+**FMX** (`TAlphaColor`, with an alpha channel) color forms — named constants, hex,
+`RGB()` calls, web-hex strings, and decimal literals.
 
 ![DelphiColorPreview in action](docs/preview.svg)
 
@@ -23,10 +24,17 @@ rewriting the literal directly in your code. It understands both **VCL** (`TColo
   | `claXXX`                 | `claRed`, `claDodgerblue`   | FMX `TAlphaColor` named constants                            |
   | `TAlphaColorRec.X`       | `TAlphaColorRec.Blue`       | FMX `TAlphaColor` record members                             |
   | `TAlphaColors.X`         | `TAlphaColors.Green`        | FMX `TAlphaColor` record members                             |
+  | `'#RGB'` / `'#RRGGBB'`   | `'#FF8800'`                 | web-hex inside a string literal; always web RGB order        |
+  | `TColorRec.X`            | `TColorRec.Crimson`         | VCL named-color record members                               |
+  | decimal `TColor`         | `Font.Color := 16708849;`   | only the direct operand of `:=` to a `*Color` target (see note) |
 
-- **Web-hex strings** — `'#RGB'` and `'#RRGGBB'` inside string literals, read in web RGB order (e.g. `'#FF8800'`).
-- **`TColorRec.X`** — VCL named-color record members (`TColorRec.Crimson`, `TColorRec.Blue`, …).
-- **Decimal `TColor`** — a raw decimal integer assigned directly to a `*Color` target (`Font.Color := 16708849;`, `TextColor := 15988209;`). Recognized only as the direct operand of the assignment: values in casts, function arguments, or `const` declarations are intentionally ignored to avoid false positives on non-color integers.
+- **Decimal `TColor` is context-gated.** It is recognized *only* as the direct operand of an
+  assignment to a target whose name ends in `Color` (`Font.Color := 16708849;`,
+  `TextColor := 15988209;`). Values inside casts (`TColor(…)`), function arguments, `const`
+  declarations, or larger expressions are intentionally ignored, to avoid false positives on
+  ordinary integers (sizes, counts, IDs, loop bounds). Web-hex is read only for the
+  `#RGB`/`#RRGGBB` form; `TColorRec.X` uses the VCL named palette (a `TColors.X` type from
+  third-party libraries is not recognized).
 - **Byte order is mostly automatic.** Only bare hex, and a bare decimal assigned directly to
   a `*Color` target, are ambiguous (`$RRGGBB` is BGR in VCL, RGB in FMX/web, and a low-range
   decimal follows the same mode), and the plugin resolves it for you:
