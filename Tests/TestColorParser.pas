@@ -20,6 +20,7 @@ type
     [Test] procedure AlphaRec_Member;
     [Test] procedure TooShortHex_NoToken;
     [Test] procedure PlainNumber_NoToken;
+    [Test] procedure StringLiteral_NonWeb_NoToken;
   end;
 
 implementation
@@ -120,6 +121,16 @@ var
   L: TColorTokens;
 begin
   L := FindColorTokens('  Count := 12345;', False);
+  Assert.AreEqual(0, Length(L));
+end;
+
+procedure TColorParserTests.StringLiteral_NonWeb_NoToken;
+var
+  L: TColorTokens;
+begin
+  // Color-family substrings inside string literals are NOT colors (avoids
+  // false positives); only web-hex '#RRGGBB' is recognized (a later task).
+  L := FindColorTokens('  Caption := ''clRed'';', False);
   Assert.AreEqual(0, Length(L));
 end;
 
