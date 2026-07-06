@@ -21,7 +21,7 @@ uses
 
 type
   /// <summary>Kind of color literal found in source code.</summary>
-  TColorKind = (ckVclName, ckVclHex, ckRgbCall, ckAlphaName, ckRgbHex, ckWebHex);
+  TColorKind = (ckVclName, ckVclHex, ckRgbCall, ckAlphaName, ckRgbHex, ckWebHex, ckDecimal);
 
   /// <summary>A color literal located inside a single source line.</summary>
   TColorToken = record
@@ -72,6 +72,8 @@ const
   OPAQUE           = 255;
   ALPHA_HEX_DIGITS = 8;     // hex width that carries an alpha byte
   RGB_HEX_DIGITS   = 6;
+  COLOR_MASK       = $00FFFFFF;   // 24-bit color range
+  COLOR_SUFFIX     = 'Color';     // decimal gate: the assignment target must end with this
 
 type
   TLexKind = (lkIdent, lkNumber, lkHex, lkString, lkSymbol);
@@ -496,6 +498,61 @@ begin
   Result := True;
 end;
 
+{ ---- decimal-literal recognizer (context-gated) ---- }
+
+function EndsWithColor(const aWord: string): Boolean;
+begin
+  Result := (aWord.Length >= Length(COLOR_SUFFIX)) and
+            aWord.EndsWith(COLOR_SUFFIX, True);
+end;
+
+{ True when aLex[aIdx] is ':=' whose LHS is a *Color target and whose RHS first
+  lexeme is a bare number (the direct operand). }
+function IsColorAssign(const aLex: TLexemes; aIdx: Integer): Boolean;
+begin
+  Result := IsSym(aLex, aIdx, ':=') and
+            (aIdx > 0) and (aLex[aIdx - 1].Kind = lkIdent) and
+            EndsWithColor(aLex[aIdx - 1].Text) and
+            (aIdx + 1 <= High(aLex)) and (aLex[aIdx + 1].Kind = lkNumber);
+end;
+
+{ Interprets a bare decimal like the equivalent hex literal: <= $FFFFFF is a
+  24-bit color (BGR or RGB per aRgbOrder); a larger value carries a high byte
+  and is read as ARGB. Values above $FFFFFFFF are rejected. }
+function BuildDecimalToken(const aLexNum: TLexeme; aRgbOrder: Boolean;
+  out aToken: TColorToken): Boolean;
+var
+  LValue: Int64;
+begin
+  Result := False;
+  LValue := StrToInt64Def(aLexNum.Text, -1);
+  if (LValue < 0) or (LValue > $FFFFFFFF) then
+    Exit;
+  aToken.StartCol := aLexNum.StartCol;
+  aToken.Length   := aLexNum.Text.Length;
+  aToken.Prefix   := String.Empty;
+  aToken.Kind     := ckDecimal;
+  if LValue > COLOR_MASK then
+  begin
+    aToken.Color     := RGB(Byte(LValue shr 16), Byte(LValue shr 8), Byte(LValue));
+    aToken.Alpha     := Byte(LValue shr 24);
+    aToken.HexDigits := ALPHA_HEX_DIGITS;
+  end
+  else if aRgbOrder then
+  begin
+    aToken.Color     := RGB(Byte(LValue shr 16), Byte(LValue shr 8), Byte(LValue));
+    aToken.Alpha     := OPAQUE;
+    aToken.HexDigits := RGB_HEX_DIGITS;
+  end
+  else
+  begin
+    aToken.Color     := TColor(LValue);          // $00BBGGRR VCL
+    aToken.Alpha     := OPAQUE;
+    aToken.HexDigits := RGB_HEX_DIGITS;
+  end;
+  Result := True;
+end;
+
 { ---- top-level recognizer ---- }
 
 function RecognizeAt(const aLex: TLexemes; aIdx: Integer; aRgbOrder: Boolean;
@@ -507,6 +564,13 @@ begin
     lkIdent : Result := TryIdent(aLex, aIdx, aToken, aConsumed);
     lkHex   : Result := BuildHexToken(aLex[aIdx], aRgbOrder, aToken);
     lkString: Result := BuildWebHexToken(aLex[aIdx], aToken);
+    lkSymbol:
+      if IsColorAssign(aLex, aIdx) and
+         BuildDecimalToken(aLex[aIdx + 1], aRgbOrder, aToken) then
+      begin
+        Result := True;
+        aConsumed := 2;   // skip ':=' and the consumed number
+      end;
   end;
 end;
 
@@ -594,6 +658,20 @@ begin
     Result := aToken.Prefix + LName;                                    // TColorRec.Crimson
 end;
 
+function FormatDecimal(aRgb: TColor; aAlpha: Byte; aHexDigits: Integer; aRgbOrder: Boolean): string;
+var
+  LValue: Cardinal;
+begin
+  if aHexDigits = ALPHA_HEX_DIGITS then
+    LValue := MakeAlphaValue(aRgb, aAlpha)
+  else if aRgbOrder then
+    LValue := (Cardinal(GetRValue(aRgb)) shl 16) or
+              (Cardinal(GetGValue(aRgb)) shl 8) or Cardinal(GetBValue(aRgb))
+  else
+    LValue := Cardinal(ColorToRGB(aRgb)) and COLOR_MASK;   // $00BBGGRR VCL
+  Result := IntToStr(Int64(LValue));
+end;
+
 function FormatColorLiteral(const aToken: TColorToken; aRgbOrder: Boolean): string;
 var
   LRgb: TColor;
@@ -608,6 +686,8 @@ begin
       Result := FormatAlphaName(aToken, LRgb);
     ckWebHex:
       Result := FormatWebHex(LRgb);
+    ckDecimal:
+      Result := FormatDecimal(LRgb, aToken.Alpha, aToken.HexDigits, aRgbOrder);
   else
     Result := FormatHex(LRgb, aToken.Alpha, aToken.HexDigits, aRgbOrder);
   end;
@@ -618,7 +698,7 @@ begin
   if aToken.Kind = ckWebHex then
     Exit(True);
   if aToken.HexDigits = ALPHA_HEX_DIGITS then
-    Result := aToken.Kind = ckRgbHex
+    Result := (aToken.Kind = ckRgbHex) or (aToken.Kind = ckDecimal)
   else
     Result := aEffective6;
 end;

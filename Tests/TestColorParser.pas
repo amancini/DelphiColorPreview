@@ -31,6 +31,14 @@ type
     [Test] procedure ColorRec_Member;
     [Test] procedure ColorRec_RoundTrip;
     [Test] procedure Colors_Disabled;
+    // --- decimal color literals (context-gated) ---
+    [Test] procedure Decimal_ColorAssign_Bgr;
+    [Test] procedure Decimal_TextColor;
+    [Test] procedure Decimal_RoundTrip;
+    [Test] procedure Decimal_ArgbInRgbFile;
+    [Test] procedure Decimal_NotColorTarget_NoToken;
+    [Test] procedure Decimal_InCall_NoToken;
+    [Test] procedure Decimal_ColorIndex_NoToken;
   end;
 
 implementation
@@ -233,6 +241,68 @@ var
 begin
   // TColors is a not-yet-mapped custom type -> no token until enabled
   L := FindColorTokens('  C := TColors.Red;', False);
+  Assert.AreEqual(0, Length(L));
+end;
+
+procedure TColorParserTests.Decimal_ColorAssign_Bgr;
+var
+  L: TColorTokens;
+begin
+  L := FindColorTokens('  X.Color := 16708849;', False); // $FEF4F1 BGR
+  Assert.AreEqual(1, Length(L));
+  Assert.AreEqual(Ord(ckDecimal), Ord(L[0].Kind));
+  Assert.AreEqual(Integer(TColor($FEF4F1)), Integer(L[0].Color));
+end;
+
+procedure TColorParserTests.Decimal_TextColor;
+var
+  L: TColorTokens;
+begin
+  L := FindColorTokens('  TextColor := 15988209;', False);
+  Assert.AreEqual(1, Length(L));
+  Assert.AreEqual(Ord(ckDecimal), Ord(L[0].Kind));
+end;
+
+procedure TColorParserTests.Decimal_RoundTrip;
+var
+  L: TColorTokens;
+begin
+  L := FindColorTokens('  X.Color := 16708849;', False);
+  Assert.AreEqual(1, Length(L));
+  Assert.AreEqual('16708849', FormatColorLiteral(L[0], False));
+end;
+
+procedure TColorParserTests.Decimal_ArgbInRgbFile;
+var
+  L: TColorTokens;
+begin
+  L := FindColorTokens('  Fill.Color := 4278190080;', True); // $FF000000 ARGB
+  Assert.AreEqual(1, Length(L));
+  Assert.AreEqual(8, L[0].HexDigits);
+  Assert.AreEqual(255, Integer(L[0].Alpha));
+end;
+
+procedure TColorParserTests.Decimal_NotColorTarget_NoToken;
+var
+  L: TColorTokens;
+begin
+  L := FindColorTokens('  Width := 16708849;', False);
+  Assert.AreEqual(0, Length(L));
+end;
+
+procedure TColorParserTests.Decimal_InCall_NoToken;
+var
+  L: TColorTokens;
+begin
+  L := FindColorTokens('  Color := SomeFunc(16708849);', False);
+  Assert.AreEqual(0, Length(L));
+end;
+
+procedure TColorParserTests.Decimal_ColorIndex_NoToken;
+var
+  L: TColorTokens;
+begin
+  L := FindColorTokens('  ColorIndex := 5;', False);
   Assert.AreEqual(0, Length(L));
 end;
 
