@@ -3,16 +3,16 @@ unit ColorPreview.Parser;
 { Scans a single source line and extracts the color literals it contains, and
   formats a color value back into a literal.
 
+  The line is first lexed into a token stream (Lex), then the recognizer walks
+  that stream and emits color tokens. This makes context rules (e.g. a decimal
+  assigned to a *Color target) straightforward instead of ad-hoc character state.
+
   Recognized literal families:
     - VCL clXXX constants               (BGR, order-fixed)
     - RGB(r,g,b) calls, integer args     (channels, order-fixed)
     - FMX TAlphaColor named consts       (ARGB, order-fixed):
         claXXX, TAlphaColorRec.X, TAlphaColors.X
-    - $ hex literals                     (BGR or RGB, per the byte-order switch):
-        BGR mode -> $00BBGGRR (VCL TColor); RGB mode -> $RRGGBB / $AARRGGBB (web/FMX)
-
-  Only the bare hex family depends on the byte-order switch (aRgbOrder); every
-  other family has a fixed interpretation. }
+    - $ hex literals                     (BGR or RGB, per the byte-order switch) }
 
 interface
 
@@ -30,7 +30,7 @@ type
     Color     : TColor;     // display color (BGR, opaque) - always valid
     Alpha     : Byte;       // 255 for non-alpha families; real alpha otherwise
     HexDigits : Integer;    // digit count of a hex literal (0 when not hex)
-    Prefix    : string;     // alpha-name prefix as typed: 'cla' | 'TAlphaColorRec.' | 'TAlphaColors.'
+    Prefix    : string;     // family prefix as typed: 'cla' | 'TAlphaColorRec.' | 'TAlphaColors.'
     Kind      : TColorKind;
   end;
 
@@ -50,9 +50,7 @@ function FindColorTokens(const aLineText: string; aRgbOrder: Boolean): TColorTok
 function FormatColorLiteral(const aToken: TColorToken; aRgbOrder: Boolean): string;
 
 /// <summary>
-///   Returns the RGB-order flag to use when writing a hex token back. An
-///   8-digit literal keeps the family it was auto-detected as (by high byte);
-///   a 6-digit literal follows aEffective6 (the file/mode-derived order).
+///   Returns the RGB-order flag to use when writing a hex token back.
 /// </summary>
 function HexUsesRgbOrder(const aToken: TColorToken; aEffective6: Boolean): Boolean;
 
@@ -67,12 +65,26 @@ uses
   Winapi.Windows;
 
 const
-  MIN_HEX_DIGITS  = 6;     // shortest hex treated as a color ($RRGGBB)
-  MAX_HEX_DIGITS  = 8;     // longest hex treated as a color ($00BBGGRR / $AARRGGBB)
-  RGB_ARG_COUNT   = 3;
-  RGB_MAX_CHANNEL = 255;
-  OPAQUE          = 255;
-  ALPHA_HEX_DIGITS = 8;    // hex width that carries an alpha byte in RGB mode
+  MIN_HEX_DIGITS   = 6;     // shortest hex treated as a color ($RRGGBB)
+  MAX_HEX_DIGITS   = 8;     // longest hex treated as a color ($00BBGGRR / $AARRGGBB)
+  RGB_ARG_COUNT    = 3;
+  RGB_MAX_CHANNEL  = 255;
+  OPAQUE           = 255;
+  ALPHA_HEX_DIGITS = 8;     // hex width that carries an alpha byte
+  RGB_HEX_DIGITS   = 6;
+
+type
+  TLexKind = (lkIdent, lkNumber, lkHex, lkString, lkSymbol);
+
+  TLexeme = record
+    Kind     : TLexKind;
+    StartCol : Integer;     // 1-based column of the first character
+    Text     : string;      // exact source text of the lexeme
+  end;
+
+  TLexemes = TArray<TLexeme>;
+
+{ ---- character helpers ---- }
 
 function IsIdentStart(aCh: Char): Boolean;
 begin
@@ -89,153 +101,132 @@ begin
   Result := CharInSet(aCh, ['0'..'9', 'A'..'F', 'a'..'f']);
 end;
 
-procedure SkipSpaces(const aText: string; var aPos: Integer);
+function MakeLex(aKind: TLexKind; aStart: Integer; const aText: string): TLexeme;
 begin
-  while (aPos <= aText.Length) and (aText[aPos] = ' ') do
-    Inc(aPos);
+  Result.Kind := aKind;
+  Result.StartCol := aStart;
+  Result.Text := aText;
 end;
 
-function ReadIdentifier(const aText: string; var aPos: Integer): string;
+{ ---- lexer ---- }
+
+function LexWord(const aText: string; var aPos: Integer): TLexeme;
 var
   LStart: Integer;
 begin
   LStart := aPos;
   while (aPos <= aText.Length) and IsIdentChar(aText[aPos]) do
     Inc(aPos);
-  Result := aText.Substring(LStart - 1, aPos - LStart);
+  Result := MakeLex(lkIdent, LStart, aText.Substring(LStart - 1, aPos - LStart));
 end;
 
-{ Reads one decimal channel (0..255) and, when expected, the trailing comma. }
-function ReadChannel(const aText: string; var aPos: Integer; aExpectComma: Boolean;
-  out aValue: Integer): Boolean;
+function LexHex(const aText: string; var aPos: Integer): TLexeme;
 var
   LStart: Integer;
 begin
-  Result := False;
-  SkipSpaces(aText, aPos);
+  LStart := aPos;
+  Inc(aPos);                                    // skip '$'
+  while (aPos <= aText.Length) and IsHexDigit(aText[aPos]) do
+    Inc(aPos);
+  Result := MakeLex(lkHex, LStart, aText.Substring(LStart - 1, aPos - LStart));
+end;
+
+function LexNumber(const aText: string; var aPos: Integer): TLexeme;
+var
+  LStart: Integer;
+begin
   LStart := aPos;
   while (aPos <= aText.Length) and aText[aPos].IsDigit do
     Inc(aPos);
-  if aPos = LStart then
-    Exit;
-  aValue := StrToIntDef(aText.Substring(LStart - 1, aPos - LStart), -1);
-  if (aValue < 0) or (aValue > RGB_MAX_CHANNEL) then
-    Exit;
-  SkipSpaces(aText, aPos);
-  if aExpectComma then
-  begin
-    if (aPos > aText.Length) or (aText[aPos] <> ',') then
-      Exit;
-    Inc(aPos);
-  end;
-  Result := True;
+  Result := MakeLex(lkNumber, LStart, aText.Substring(LStart - 1, aPos - LStart));
 end;
 
-{ aStart points at the 'R' of "RGB"; aPos points just past the "RGB" word. }
-procedure TryRgbCall(const aText: string; aStart: Integer; var aPos: Integer;
-  aTokens: TList<TColorToken>);
+{ Reads a Pascal string literal (aPos at the opening quote); '' stays embedded. }
+function LexString(const aText: string; var aPos: Integer): TLexeme;
 var
-  LScan     : Integer;
-  LChannels : array[0 .. RGB_ARG_COUNT - 1] of Integer;
-  LIdx      : Integer;
-  LToken    : TColorToken;
-begin
-  LScan := aPos;
-  SkipSpaces(aText, LScan);
-  if (LScan > aText.Length) or (aText[LScan] <> '(') then
-    Exit;
-  Inc(LScan);
-  for LIdx := 0 to RGB_ARG_COUNT - 1 do
-    if not ReadChannel(aText, LScan, LIdx < RGB_ARG_COUNT - 1, LChannels[LIdx]) then
-      Exit;
-  SkipSpaces(aText, LScan);
-  if (LScan > aText.Length) or (aText[LScan] <> ')') then
-    Exit;
-  Inc(LScan);
-  LToken.StartCol  := aStart;
-  LToken.Length    := LScan - aStart;
-  LToken.Color     := RGB(LChannels[0], LChannels[1], LChannels[2]);
-  LToken.Alpha     := OPAQUE;
-  LToken.HexDigits := 0;
-  LToken.Prefix    := String.Empty;
-  LToken.Kind      := ckRgbCall;
-  aTokens.Add(LToken);
-  aPos := LScan;
-end;
-
-{ Adds an FMX TAlphaColor named-constant token. aValue is the resolved ARGB
-  value; aPrefix is the source prefix ('cla' / 'TAlphaColorRec.' / 'TAlphaColors.'). }
-procedure AddAlphaName(aTokens: TList<TColorToken>; aStart, aLength: Integer;
-  aValue: TAlphaColor; const aPrefix: string);
-var
-  LRec   : TAlphaColorRec;
-  LToken : TColorToken;
-begin
-  LRec := TAlphaColorRec.Create(aValue);
-  LToken.StartCol  := aStart;
-  LToken.Length    := aLength;
-  LToken.Color     := RGB(LRec.R, LRec.G, LRec.B);
-  LToken.Alpha     := LRec.A;
-  LToken.HexDigits := 0;
-  LToken.Prefix    := aPrefix;
-  LToken.Kind      := ckAlphaName;
-  aTokens.Add(LToken);
-end;
-
-{ Handles TAlphaColorRec.X / TAlphaColors.X. aStart points at the record name,
-  aPos just past it (the '.' is the next char). }
-procedure TryAlphaMember(const aText: string; aStart: Integer; var aPos: Integer;
-  const aRecord: string; aTokens: TList<TColorToken>);
-var
-  LMember   : string;
-  LColorInt : Integer;
-begin
-  if (aPos > aText.Length) or (aText[aPos] <> '.') then
-    Exit;
-  Inc(aPos);                                    // skip '.'
-  LMember := ReadIdentifier(aText, aPos);
-  if (not LMember.IsEmpty) and IdentToAlphaColor('cla' + LMember, LColorInt) then
-    AddAlphaName(aTokens, aStart, aPos - aStart, TAlphaColor(LColorInt), aRecord + '.');
-end;
-
-procedure TryIdentifierToken(const aText: string; var aPos: Integer;
-  aTokens: TList<TColorToken>);
-var
-  LStart, LColorInt : Integer;
-  LWord             : string;
-  LToken            : TColorToken;
+  LStart: Integer;
 begin
   LStart := aPos;
-  LWord := ReadIdentifier(aText, aPos);
-  if SameText(LWord, 'RGB') then
+  Inc(aPos);                                    // skip opening quote
+  while aPos <= aText.Length do
   begin
-    TryRgbCall(aText, LStart, aPos, aTokens);
-    Exit;
+    if aText[aPos] <> '''' then
+      Inc(aPos)
+    else if (aPos < aText.Length) and (aText[aPos + 1] = '''') then
+      Inc(aPos, 2)                              // doubled quote
+    else
+    begin
+      Inc(aPos);                                // closing quote
+      Break;
+    end;
   end;
-  if SameText(LWord, 'TAlphaColorRec') or SameText(LWord, 'TAlphaColors') then
-  begin
-    TryAlphaMember(aText, LStart, aPos, LWord, aTokens);
-    Exit;
-  end;
-  if (LWord.Length > 2) and LWord.StartsWith('cl', True) and
-     IdentToColor(LWord, LColorInt)
-  then
-  begin
-    LToken.StartCol  := LStart;
-    LToken.Length    := LWord.Length;
-    LToken.Color     := TColor(LColorInt);
-    LToken.Alpha     := OPAQUE;
-    LToken.HexDigits := 0;
-    LToken.Prefix    := String.Empty;
-    LToken.Kind      := ckVclName;
-    aTokens.Add(LToken);
-    Exit;
-  end;
-  if (LWord.Length > 3) and LWord.StartsWith('cla', True) and
-     IdentToAlphaColor(LWord, LColorInt)
-  then
-    AddAlphaName(aTokens, LStart, LWord.Length, TAlphaColor(LColorInt), 'cla');
+  Result := MakeLex(lkString, LStart, aText.Substring(LStart - 1, aPos - LStart));
 end;
+
+function LexSymbol(const aText: string; var aPos: Integer): TLexeme;
+var
+  LStart: Integer;
+begin
+  LStart := aPos;
+  if (aText[aPos] = ':') and (aPos < aText.Length) and (aText[aPos + 1] = '=') then
+  begin
+    Inc(aPos, 2);
+    Exit(MakeLex(lkSymbol, LStart, ':='));
+  end;
+  Result := MakeLex(lkSymbol, LStart, aText[aPos]);   // any other single char
+  Inc(aPos);
+end;
+
+function Lex(const aText: string): TLexemes;
+var
+  LList : TList<TLexeme>;
+  LPos  : Integer;
+  LCh   : Char;
+begin
+  LList := TList<TLexeme>.Create;
+  try
+    LPos := 1;
+    while LPos <= aText.Length do
+    begin
+      LCh := aText[LPos];
+      if LCh = ' ' then
+        Inc(LPos)
+      else if IsIdentStart(LCh) then
+        LList.Add(LexWord(aText, LPos))
+      else if LCh = '$' then
+        LList.Add(LexHex(aText, LPos))
+      else if LCh.IsDigit then
+        LList.Add(LexNumber(aText, LPos))
+      else if LCh = '''' then
+        LList.Add(LexString(aText, LPos))
+      else
+        LList.Add(LexSymbol(aText, LPos));
+    end;
+    Result := LList.ToArray;
+  finally
+    LList.Free;
+  end;
+end;
+
+{ ---- lexeme-stream helpers ---- }
+
+function IsSym(const aLex: TLexemes; aIdx: Integer; const aSym: string): Boolean;
+begin
+  Result := (aIdx >= 0) and (aIdx <= High(aLex)) and
+            (aLex[aIdx].Kind = lkSymbol) and (aLex[aIdx].Text = aSym);
+end;
+
+function ExpectChannel(const aLex: TLexemes; aIdx: Integer; out aValue: Integer): Boolean;
+begin
+  Result := (aIdx <= High(aLex)) and (aLex[aIdx].Kind = lkNumber);
+  if Result then
+  begin
+    aValue := StrToIntDef(aLex[aIdx].Text, -1);
+    Result := (aValue >= 0) and (aValue <= RGB_MAX_CHANNEL);
+  end;
+end;
+
+{ ---- value parsers (retained) ---- }
 
 { Parses a bare hex literal in RGB/web order: $RRGGBB (opaque) or $AARRGGBB. }
 function ParseRgbHex(const aLiteral: string; aDigits: Integer; var aToken: TColorToken): Boolean;
@@ -245,8 +236,8 @@ var
 begin
   Result := False;
   if (aDigits <> MIN_HEX_DIGITS) and (aDigits <> ALPHA_HEX_DIGITS) then
-    Exit;                                       // skip odd widths (e.g. 7) in RGB mode
-  LValue := StrToInt64Def(aLiteral, -1);        // '$..' parses as hexadecimal
+    Exit;
+  LValue := StrToInt64Def(aLiteral, -1);
   if LValue < 0 then
     Exit;
   if aDigits = ALPHA_HEX_DIGITS then
@@ -262,10 +253,7 @@ begin
   Result := True;
 end;
 
-{ Parses an 8-digit hex, auto-detecting the family by its high byte:
-  $00xxxxxx -> VCL BGR TColor; $AAxxxxxx (high byte <> 0) -> FMX ARGB.
-  A real VCL literal is always written $00BBGGRR, so a non-zero high byte
-  unambiguously means an alpha color - no byte-order switch needed. }
+{ Parses an 8-digit hex, auto-detecting the family by its high byte. }
 function ParseHex8(const aLiteral: string; var aToken: TColorToken): Boolean;
 var
   LValue : Int64;
@@ -291,75 +279,190 @@ begin
   Result := True;
 end;
 
-procedure TryHexToken(const aText: string; var aPos: Integer; aRgbOrder: Boolean;
-  aTokens: TList<TColorToken>);
+function BuildHexToken(const aLex: TLexeme; aRgbOrder: Boolean; out aToken: TColorToken): Boolean;
 var
-  LStart, LDigits : Integer;
-  LLiteral        : string;
-  LColor          : TColor;
-  LToken          : TColorToken;
+  LDigits : Integer;
+  LColor  : TColor;
 begin
-  LStart := aPos;
-  Inc(aPos);                                    // skip '$'
-  while (aPos <= aText.Length) and IsHexDigit(aText[aPos]) do
-    Inc(aPos);
-  LDigits := aPos - LStart - 1;
+  Result := False;
+  LDigits := aLex.Text.Length - 1;              // minus the '$'
   if (LDigits < MIN_HEX_DIGITS) or (LDigits > MAX_HEX_DIGITS) then
     Exit;
-  LLiteral := aText.Substring(LStart - 1, aPos - LStart);
-  LToken.StartCol  := LStart;
-  LToken.Length    := aPos - LStart;
-  LToken.HexDigits := LDigits;
-  LToken.Prefix    := String.Empty;
+  aToken.StartCol  := aLex.StartCol;
+  aToken.Length    := aLex.Text.Length;
+  aToken.HexDigits := LDigits;
+  aToken.Prefix    := String.Empty;
   if LDigits = ALPHA_HEX_DIGITS then
-  begin
-    if not ParseHex8(LLiteral, LToken) then     // 8 digits: auto by high byte
-      Exit;
-  end
+    Result := ParseHex8(aLex.Text, aToken)
   else if aRgbOrder then
-  begin
-    if not ParseRgbHex(LLiteral, LDigits, LToken) then
-      Exit;
-  end
+    Result := ParseRgbHex(aLex.Text, LDigits, aToken)
   else
   begin
-    if not TryStringToColor(LLiteral, LColor) then
-      Exit;
-    LToken.Color := LColor;
-    LToken.Alpha := OPAQUE;
-    LToken.Kind  := ckVclHex;
+    Result := TryStringToColor(aLex.Text, LColor);
+    if Result then
+    begin
+      aToken.Color := LColor;
+      aToken.Alpha := OPAQUE;
+      aToken.Kind  := ckVclHex;
+    end;
   end;
-  aTokens.Add(LToken);
+end;
+
+{ ---- named-color / record-member recognizers ---- }
+
+procedure FillAlphaToken(out aToken: TColorToken; aValue: TAlphaColor; const aPrefix: string);
+var
+  LRec: TAlphaColorRec;
+begin
+  LRec := TAlphaColorRec.Create(aValue);
+  aToken.Color     := RGB(LRec.R, LRec.G, LRec.B);
+  aToken.Alpha     := LRec.A;
+  aToken.HexDigits := 0;
+  aToken.Prefix    := aPrefix;
+  aToken.Kind      := ckAlphaName;
+end;
+
+{ Resolves RecordName.Member for the FMX alpha-color records. Extended in a
+  later task to also handle TColorRec (VCL). }
+function ResolveRecordMember(const aRecord, aMember: string; out aToken: TColorToken): Boolean;
+var
+  LColorInt: Integer;
+begin
+  Result := False;
+  if SameText(aRecord, 'TAlphaColorRec') or SameText(aRecord, 'TAlphaColors') then
+    if IdentToAlphaColor('cla' + aMember, LColorInt) then
+    begin
+      FillAlphaToken(aToken, TAlphaColor(LColorInt), aRecord + '.');
+      Result := True;
+    end;
+end;
+
+function TryRecordMember(const aLex: TLexemes; aStart: Integer;
+  out aToken: TColorToken; out aConsumed: Integer): Boolean;
+begin
+  Result := False;
+  aConsumed := 1;
+  if not (IsSym(aLex, aStart + 1, '.') and (aStart + 2 <= High(aLex)) and
+          (aLex[aStart + 2].Kind = lkIdent)) then
+    Exit;
+  if not ResolveRecordMember(aLex[aStart].Text, aLex[aStart + 2].Text, aToken) then
+    Exit;
+  aToken.StartCol := aLex[aStart].StartCol;
+  aToken.Length   := (aLex[aStart + 2].StartCol + aLex[aStart + 2].Text.Length) -
+                     aLex[aStart].StartCol;
+  aConsumed := 3;
+  Result := True;
+end;
+
+function TryRgbCall(const aLex: TLexemes; aStart: Integer;
+  out aToken: TColorToken; out aConsumed: Integer): Boolean;
+var
+  LR, LG, LB : Integer;
+  LClose     : Integer;
+begin
+  Result := False;
+  aConsumed := 1;
+  if not IsSym(aLex, aStart + 1, '(') then Exit;
+  if not ExpectChannel(aLex, aStart + 2, LR) then Exit;
+  if not IsSym(aLex, aStart + 3, ',') then Exit;
+  if not ExpectChannel(aLex, aStart + 4, LG) then Exit;
+  if not IsSym(aLex, aStart + 5, ',') then Exit;
+  if not ExpectChannel(aLex, aStart + 6, LB) then Exit;
+  if not IsSym(aLex, aStart + 7, ')') then Exit;
+  LClose := aStart + 7;
+  aToken.StartCol  := aLex[aStart].StartCol;
+  aToken.Length    := (aLex[LClose].StartCol + 1) - aLex[aStart].StartCol;
+  aToken.Color     := RGB(LR, LG, LB);
+  aToken.Alpha     := OPAQUE;
+  aToken.HexDigits := 0;
+  aToken.Prefix    := String.Empty;
+  aToken.Kind      := ckRgbCall;
+  aConsumed := 8;
+  Result := True;
+end;
+
+function TryNamedColor(const aLex: TLexemes; aStart: Integer;
+  out aToken: TColorToken; out aConsumed: Integer): Boolean;
+var
+  LWord     : string;
+  LColorInt : Integer;
+begin
+  Result := False;
+  aConsumed := 1;
+  LWord := aLex[aStart].Text;
+  if (LWord.Length > 2) and LWord.StartsWith('cl', True) and
+     IdentToColor(LWord, LColorInt) then
+  begin
+    aToken.StartCol  := aLex[aStart].StartCol;
+    aToken.Length    := LWord.Length;
+    aToken.Color     := TColor(LColorInt);
+    aToken.Alpha     := OPAQUE;
+    aToken.HexDigits := 0;
+    aToken.Prefix    := String.Empty;
+    aToken.Kind      := ckVclName;
+    Exit(True);
+  end;
+  if (LWord.Length > 3) and LWord.StartsWith('cla', True) and
+     IdentToAlphaColor(LWord, LColorInt) then
+  begin
+    FillAlphaToken(aToken, TAlphaColor(LColorInt), 'cla');
+    aToken.StartCol := aLex[aStart].StartCol;
+    aToken.Length   := LWord.Length;
+    Exit(True);
+  end;
+end;
+
+function TryIdent(const aLex: TLexemes; aStart: Integer;
+  out aToken: TColorToken; out aConsumed: Integer): Boolean;
+begin
+  if TryRecordMember(aLex, aStart, aToken, aConsumed) then
+    Exit(True);
+  if SameText(aLex[aStart].Text, 'RGB') then
+    Exit(TryRgbCall(aLex, aStart, aToken, aConsumed));
+  Result := TryNamedColor(aLex, aStart, aToken, aConsumed);
+end;
+
+{ ---- top-level recognizer ---- }
+
+function RecognizeAt(const aLex: TLexemes; aIdx: Integer; aRgbOrder: Boolean;
+  out aToken: TColorToken; out aConsumed: Integer): Boolean;
+begin
+  Result := False;
+  aConsumed := 1;
+  case aLex[aIdx].Kind of
+    lkIdent : Result := TryIdent(aLex, aIdx, aToken, aConsumed);
+    lkHex   : Result := BuildHexToken(aLex[aIdx], aRgbOrder, aToken);
+  end;
 end;
 
 function FindColorTokens(const aLineText: string; aRgbOrder: Boolean): TColorTokens;
 var
-  LTokens : TList<TColorToken>;
-  LPos    : Integer;
-  LCh     : Char;
+  LLex      : TLexemes;
+  LOut      : TList<TColorToken>;
+  LIdx      : Integer;
+  LTok      : TColorToken;
+  LConsumed : Integer;
 begin
   if aLineText.IsEmpty then
     Exit(nil);
-  LTokens := TList<TColorToken>.Create;
+  LLex := Lex(aLineText);
+  LOut := TList<TColorToken>.Create;
   try
-    LPos := 1;
-    while LPos <= aLineText.Length do
+    LIdx := 0;
+    while LIdx <= High(LLex) do
     begin
-      LCh := aLineText[LPos];
-      if IsIdentStart(LCh) then
-        TryIdentifierToken(aLineText, LPos, LTokens)
-      else if LCh = '$' then
-        TryHexToken(aLineText, LPos, aRgbOrder, LTokens)
-      else
-        Inc(LPos);
+      if RecognizeAt(LLex, LIdx, aRgbOrder, LTok, LConsumed) then
+        LOut.Add(LTok);
+      Inc(LIdx, LConsumed);
     end;
-    Result := LTokens.ToArray;
+    Result := LOut.ToArray;
   finally
-    LTokens.Free;
+    LOut.Free;
   end;
 end;
 
-{ Composes an ARGB value from an opaque RGB TColor plus an alpha byte. }
+{ ---- format back ---- }
+
 function MakeAlphaValue(aRgb: TColor; aAlpha: Byte): Cardinal;
 begin
   Result := (Cardinal(aAlpha) shl 24) or (Cardinal(GetRValue(aRgb)) shl 16) or
@@ -374,17 +477,17 @@ begin
   LValue := MakeAlphaValue(aRgb, aToken.Alpha);
   LName := AlphaColorToString(TAlphaColor(LValue));
   if not LName.StartsWith('cla', True) then
-    Exit('$' + IntToHex(LValue, ALPHA_HEX_DIGITS));   // custom color -> $AARRGGBB
+    Exit('$' + IntToHex(LValue, ALPHA_HEX_DIGITS));
   if aToken.Prefix.IsEmpty or SameText(aToken.Prefix, 'cla') then
     Result := LName
   else
-    Result := aToken.Prefix + LName.Substring(3);      // e.g. TAlphaColorRec.Red
+    Result := aToken.Prefix + LName.Substring(3);
 end;
 
 function FormatHex(aRgb: TColor; aAlpha: Byte; aHexDigits: Integer; aRgbOrder: Boolean): string;
 begin
   if not aRgbOrder then
-    Exit('$' + IntToHex(aRgb, ALPHA_HEX_DIGITS));       // VCL $00BBGGRR
+    Exit('$' + IntToHex(aRgb, ALPHA_HEX_DIGITS));
   if (aAlpha < OPAQUE) or (aHexDigits = ALPHA_HEX_DIGITS) then
     Result := '$' + IntToHex(aAlpha, 2) + IntToHex(GetRValue(aRgb), 2) +
               IntToHex(GetGValue(aRgb), 2) + IntToHex(GetBValue(aRgb), 2)
@@ -402,7 +505,7 @@ begin
     ckRgbCall:
       Result := Format('RGB(%d, %d, %d)', [GetRValue(LRgb), GetGValue(LRgb), GetBValue(LRgb)]);
     ckVclName:
-      Result := ColorToString(aToken.Color);   // clXXX name when known, else $hex
+      Result := ColorToString(aToken.Color);
     ckAlphaName:
       Result := FormatAlphaName(aToken, LRgb);
   else
