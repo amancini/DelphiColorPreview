@@ -1,0 +1,4 @@
+*.exe
+*.dcu
+dcu/
+*.map
