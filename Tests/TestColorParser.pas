@@ -24,6 +24,8 @@ type
     [Test] procedure WebHex_Six;
     [Test] procedure WebHex_ShortExpands;
     [Test] procedure WebHex_NonHex_NoToken;
+    [Test] procedure WebHex_Unterminated_NoToken;
+    [Test] procedure WebHex_RoundTrip;
   end;
 
 implementation
@@ -163,6 +165,24 @@ var
 begin
   L := FindColorTokens('  S := ''#pragma'';', False);
   Assert.AreEqual(0, Length(L));
+end;
+
+procedure TColorParserTests.WebHex_Unterminated_NoToken;
+var
+  L: TColorTokens;
+begin
+  // Unterminated string (no closing quote) must NOT produce a token.
+  L := FindColorTokens('  S := ''#AABBCCX', False);
+  Assert.AreEqual(0, Length(L));
+end;
+
+procedure TColorParserTests.WebHex_RoundTrip;
+var
+  L: TColorTokens;
+begin
+  L := FindColorTokens('  S := ''#FF8800'';', False);
+  Assert.AreEqual(1, Length(L));
+  Assert.AreEqual('''#FF8800''', FormatColorLiteral(L[0], False));
 end;
 
 initialization

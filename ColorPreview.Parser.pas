@@ -426,7 +426,7 @@ function IsWebHexDigits(const aDigits: string): Boolean;
 var
   LCh: Char;
 begin
-  Result := (aDigits.Length = 3) or (aDigits.Length = 6);
+  Result := (aDigits.Length = 3) or (aDigits.Length = RGB_HEX_DIGITS);
   if not Result then
     Exit;
   for LCh in aDigits do
@@ -448,7 +448,8 @@ var
 begin
   Result := False;
   LInner := aLex.Text;
-  if (LInner.Length < 3) or (LInner.Chars[0] <> '''') then
+  if (LInner.Length < 3) or (LInner.Chars[0] <> '''') or
+     (LInner.Chars[LInner.Length - 1] <> '''') then
     Exit;
   LInner := LInner.Substring(1, LInner.Length - 2);   // strip the quotes
   if (LInner.Length < 4) or (LInner.Chars[0] <> '#') then
